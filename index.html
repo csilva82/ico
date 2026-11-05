@@ -40,8 +40,10 @@ button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
 button.primary:hover{background:var(--blue2)}
 button:disabled{opacity:.45;cursor:not-allowed}
 .spacer{flex:1}
-.size-tabs{display:flex;gap:6px;margin-bottom:12px}
-.size-tab{flex:1;padding:10px 5px;border:1px solid var(--line);background:#fff;border-radius:5px;cursor:pointer;font-weight:600;color:#526078}
+.custom-size{display:flex;gap:6px;align-items:center}
+#customSize{width:84px;height:36px}
+.size-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.size-tab{flex:1;min-width:70px;padding:10px 5px;border:1px solid var(--line);background:#fff;border-radius:5px;cursor:pointer;font-weight:600;color:#526078}
 .size-tab.active{border:1px solid var(--blue);color:var(--blue);background:#f2f1ff}
 .canvas-wrap{min-height:490px;background:#f0f2ff;border-radius:5px;display:grid;place-items:center;padding:15px;overflow:auto}
 canvas#editor{width:min(100%,512px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:white;cursor:crosshair;box-shadow:0 1px 5px #00000014}
@@ -52,6 +54,8 @@ canvas#editor{width:min(100%,512px);height:auto;aspect-ratio:1;image-rendering:p
 .preview-card{border:1px solid var(--line);padding:8px 4px;text-align:center;border-radius:4px;font-size:12px}
 .preview-card canvas{width:64px;height:64px;image-rendering:pixelated;background:repeating-conic-gradient(#eee 0% 25%,#fff 0% 50%) 50%/12px 12px;display:block;margin:0 auto 6px}
 .preview-card strong{display:block;font-size:13px}
+.export-mode{margin:12px 0 10px}
+.export-mode label{display:block;font-size:13px;color:#526078;margin-bottom:6px}
 .help{font-size:12px;line-height:1.5;color:var(--muted);margin-top:14px}
 .status{font-size:12px;color:var(--muted);margin-top:8px;min-height:18px}
 input[type=file]{display:none}
@@ -118,15 +122,14 @@ input[type=file]{display:none}
         <button id="clearBtn">Limpar</button>
         <button id="undoBtn" disabled>↶ Desfazer</button>
         <button id="redoBtn" disabled>↷ Refazer</button>
+        <span class="custom-size">
+          <input id="customSize" type="number" min="8" max="256" placeholder="Ex: 48">
+          <button id="addSizeBtn">+ Tamanho</button>
+        </span>
         <span class="spacer"></span>
         <button id="fitBtn">Ajustar visualização</button>
       </div>
-      <div class="size-tabs" id="sizeTabs">
-        <button class="size-tab active" data-size="64">64 × 64</button>
-        <button class="size-tab" data-size="32">32 × 32</button>
-        <button class="size-tab" data-size="24">24 × 24</button>
-        <button class="size-tab" data-size="16">16 × 16</button>
-      </div>
+      <div class="size-tabs" id="sizeTabs"></div>
       <div class="canvas-wrap">
         <canvas id="editor" width="64" height="64"></canvas>
       </div>
@@ -139,9 +142,16 @@ input[type=file]{display:none}
       <h3>Pré-visualização</h3>
       <div class="preview-grid" id="previews"></div>
       <button class="wide" id="previewBtn">Atualizar prévia</button>
+      <div class="export-mode">
+        <label for="exportMode">Baixar ICO com:</label>
+        <select id="exportMode">
+          <option value="all">Todas as resoluções</option>
+          <option value="current">Somente a resolução atual</option>
+        </select>
+      </div>
       <button class="primary wide" id="exportBtn">Exportar arquivo .ICO</button>
       <button class="wide" id="pngBtn">Baixar PNG da resolução atual</button>
-      <div class="help">O ICO exportado reúne imagens PNG nas resoluções 64, 32, 24 e 16 pixels. Essa estrutura é aceita por versões modernas do Windows.</div>
+      <div class="help">O ICO exportado reúne imagens PNG nas resoluções criadas (padrão e personalizadas). Essa estrutura é aceita por versões modernas do Windows.</div>
       <div class="status" id="exportStatus"></div>
     </aside>
   </div>
@@ -154,9 +164,35 @@ input[type=file]{display:none}
  const $=id=>document.getElementById(id);
  const color=$('color'), alpha=$('alpha');
  const rgba=()=>{const h=color.value;return `rgba(${parseInt(h.slice(1,3),16)},${parseInt(h.slice(3,5),16)},${parseInt(h.slice(5,7),16)},${Number(alpha.value)/100})`};
- function init(){sizes.forEach(s=>{const c=document.createElement('canvas');c.width=c.height=s;states[s]=c;histories[s]=[];future[s]=[];});render();buildPreviews();updateHistoryButtons();}
+
+ function createSize(s){const c=document.createElement('canvas');c.width=c.height=s;states[s]=c;histories[s]=[];future[s]=[];}
+ function init(){sizes.forEach(createSize);buildTabs();render();buildPreviews();updateHistoryButtons();}
  function current(){return states[activeSize].getContext('2d',{willReadFrequently:true})}
  function setStatus(t){$('status').textContent=t}
+
+ function buildTabs(){
+  const box=$('sizeTabs');box.innerHTML='';
+  sizes.forEach(s=>{
+   const b=document.createElement('button');
+   b.className='size-tab'+(s===activeSize?' active':'');
+   b.dataset.size=s;b.textContent=s+' × '+s;
+   b.onclick=()=>{activeSize=s;buildTabs();render();updateHistoryButtons();};
+   box.append(b);
+  });
+  $('exportMode').options[1].textContent='Somente a resolução atual ('+activeSize+' × '+activeSize+')';
+ }
+ $('addSizeBtn').onclick=()=>{
+  const s=parseInt($('customSize').value,10);
+  if(!s||s<8||s>256){setStatus('Informe um tamanho entre 8 e 256.');return;}
+  if(sizes.includes(s)){setStatus('Esse tamanho já existe.');return;}
+  sizes.push(s);sizes.sort((a,b)=>b-a);
+  createSize(s);
+  const d=states[s].getContext('2d');d.imageSmoothingEnabled=true;
+  d.drawImage(states[activeSize],0,0,s,s); // parte da resolução atual (apague esta linha para começar em branco)
+  activeSize=s;buildTabs();render();buildPreviews();updateHistoryButtons();
+  $('customSize').value='';setStatus('Tamanho '+s+'×'+s+' adicionado.');
+ };
+
  function saveHistory(){const c=states[activeSize];histories[activeSize].push(c.getContext('2d').getImageData(0,0,c.width,c.height));if(histories[activeSize].length>40)histories[activeSize].shift();future[activeSize]=[];updateHistoryButtons();}
  function updateHistoryButtons(){$('undoBtn').disabled=$('undoIcon').disabled=histories[activeSize].length===0;$('redoBtn').disabled=$('redoIcon').disabled=future[activeSize].length===0;}
  function restore(stack,other){if(!stack.length)return;const c=states[activeSize],d=c.getContext('2d');other.push(d.getImageData(0,0,c.width,c.height));d.putImageData(stack.pop(),0,0);render();buildPreviews();updateHistoryButtons();}
@@ -183,7 +219,6 @@ input[type=file]{display:none}
  function pointerUp(e){if(!drawing)return;const p=coords(e);if(['line','rect','circle'].includes(tool)){current().putImageData(snapshot,0,0);drawShape(start,p);}drawing=false;render();buildPreviews();updateHistoryButtons();}
  editor.addEventListener('pointerdown',pointerDown);editor.addEventListener('pointermove',pointerMove);editor.addEventListener('pointerup',pointerUp);editor.addEventListener('pointercancel',pointerUp);
  document.querySelectorAll('.tool').forEach(b=>b.addEventListener('click',()=>{tool=b.dataset.tool;document.querySelectorAll('.tool').forEach(x=>x.classList.toggle('active',x===b));setStatus('Ferramenta selecionada: '+b.title);}));
- document.querySelectorAll('.size-tab').forEach(b=>b.addEventListener('click',()=>{activeSize=Number(b.dataset.size);document.querySelectorAll('.size-tab').forEach(x=>x.classList.toggle('active',x===b));render();updateHistoryButtons();}));
  $('brush').addEventListener('input',e=>$('brushVal').textContent=e.target.value+' px');
  color.addEventListener('input',()=>{$('hex').textContent=color.value.toUpperCase()});
  alpha.addEventListener('input',()=>{$('alphaVal').textContent=alpha.value+'%'});
@@ -200,11 +235,19 @@ input[type=file]{display:none}
  $('previewBtn').onclick=buildPreviews;$('fitBtn').onclick=render;
  $('pngBtn').onclick=()=>{states[activeSize].toBlob(blob=>download(blob,'icone-'+activeSize+'x'+activeSize+'.png'));};
  function download(blob,name){const a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);}
- async function exportICO(){try{const entries=[];for(const s of sizes){const blob=await new Promise(resolve=>states[s].toBlob(resolve,'image/png'));entries.push(new Uint8Array(await blob.arrayBuffer()));}
+
+ async function exportICO(){try{
+   const only=$('exportMode').value==='current';
+   const list=only?[activeSize]:[...sizes];
+   const entries=[];
+   for(const s of list){const blob=await new Promise(resolve=>states[s].toBlob(resolve,'image/png'));entries.push(new Uint8Array(await blob.arrayBuffer()));}
    const headerSize=6,dirSize=16,offset=headerSize+dirSize*entries.length,total=offset+entries.reduce((n,b)=>n+b.length,0),out=new Uint8Array(total),view=new DataView(out.buffer);
    view.setUint16(0,0,true);view.setUint16(2,1,true);view.setUint16(4,entries.length,true);let pos=offset;
-   entries.forEach((b,i)=>{const p=headerSize+i*dirSize,s=sizes[i];out[p]=s===256?0:s;out[p+1]=s===256?0:s;out[p+2]=0;out[p+3]=0;view.setUint16(p+4,1,true);view.setUint16(p+6,32,true);view.setUint32(p+8,b.length,true);view.setUint32(p+12,pos,true);out.set(b,pos);pos+=b.length;});
-   download(new Blob([out],{type:'image/x-icon'}),'icone-personalizado.ico');$('exportStatus').textContent='ICO exportado com 4 resoluções.';setStatus('Arquivo ICO gerado com sucesso.');
+   entries.forEach((b,i)=>{const p=headerSize+i*dirSize,s=list[i];out[p]=s>=256?0:s;out[p+1]=s>=256?0:s;out[p+2]=0;out[p+3]=0;view.setUint16(p+4,1,true);view.setUint16(p+6,32,true);view.setUint32(p+8,b.length,true);view.setUint32(p+12,pos,true);out.set(b,pos);pos+=b.length;});
+   const name=only?'icone-'+activeSize+'x'+activeSize+'.ico':'icone-personalizado.ico';
+   download(new Blob([out],{type:'image/x-icon'}),name);
+   $('exportStatus').textContent=only?'ICO exportado em '+activeSize+'×'+activeSize+'.':'ICO exportado com '+list.length+' resoluções.';
+   setStatus('Arquivo ICO gerado com sucesso.');
  }catch(err){$('exportStatus').textContent='Erro ao exportar: '+err.message;}}
  $('exportBtn').onclick=exportICO;
  init();
